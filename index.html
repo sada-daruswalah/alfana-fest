@@ -127,10 +127,18 @@
   .fitem button{padding:8px 14px;font-size:13px}
   .msg{font-size:13px;margin-top:12px;color:var(--gold2);min-height:18px}
   footer a.adm{color:var(--muted);opacity:.55;text-decoration:none;font-size:12px}
+  .dzstage{background:#8d8d8d;border-radius:12px;padding:8px}
+  .dzstage canvas{display:block;width:100%;height:auto;touch-action:none;border-radius:6px;cursor:move}
+  .pr{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+  .pr .full{grid-column:1/-1}
+  select.inp{appearance:auto}
+  .chip{padding:7px 12px!important;font-size:13px!important}
+  .chip.on{border-color:var(--gold)!important;color:var(--gold2)!important}
+  .inp[type=color]{padding:4px;height:44px}
   footer{border-top:1px solid var(--line);padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
   footer img{width:56px;height:56px;border-radius:50%;background:#fff;padding:6px;object-fit:contain;margin-bottom:10px}
   footer b{display:block;font-family:var(--serif);font-size:20px;color:var(--ivory);margin-bottom:4px}
-  @media(max-width:560px){.brand span{font-size:18px}.links a{padding:8px 10px}.links a.hide-m{display:none}}
+  @media(max-width:560px){.brand span{font-size:16px}.brand .mark{display:none}.links a{padding:8px 9px;font-size:13px}.links a.hide-m{display:none}}
 </style>
 </head>
 <body>
@@ -144,6 +152,7 @@
     <nav class="links" aria-label="Main">
       <a href="#home" id="nHome" class="hide-m">Home</a>
       <a href="#editor" id="nEdit">Frame Your Photo</a>
+      <a href="#admin" id="nAdmin">Admin</a>
     </nav>
   </div>
 </header>
@@ -280,13 +289,43 @@
         <h3>Frames</h3>
         <p class="sub">The first frame is shown to visitors by default. Visitors can choose any frame when there are two or more.</p>
         <div id="aList"></div>
+      </div>
+
+      <div class="panel" style="margin-top:22px" id="dz">
+        <h3>Design a Frame</h3>
+        <p class="sub">Tap an item on the picture to select it, drag it to move, and change its details below. The see-through area is the photo window.</p>
+        <div class="dzstage"><canvas id="dc" width="1080" height="1350"></canvas></div>
+        <div class="row">
+          <button class="ghost chip" id="dzText" type="button">+ Text</button>
+          <button class="ghost chip" id="dzImg" type="button">+ Image</button>
+          <button class="ghost chip" id="dzLogo" type="button">+ Event Logo</button>
+          <button class="ghost chip" id="dzBar" type="button">+ Colour Bar</button>
+        </div>
+        <div class="row" id="dzList"></div>
         <div class="sep"></div>
-        <h3>Add a New Frame</h3>
-        <p class="sub">Use a transparent PNG, 1080 &times; 1350 px. The photo shows through the window at the top.</p>
+        <div id="dzProps"></div>
+        <div class="sep"></div>
+        <label class="lab" for="dzName">Frame name</label>
+        <input class="inp" id="dzName" placeholder="Official frame">
+        <div class="row">
+          <button class="btn" id="dzSave" type="button">Save as New Frame</button>
+          <button class="ghost" id="dzReset" type="button">Start Over</button>
+        </div>
+        <p class="msg" id="dzMsg"></p>
+        <input type="file" id="dzFile" accept="image/*">
+      </div>
+
+      <div class="panel" style="margin-top:22px">
+        <h3>Or Upload a Ready-made Frame</h3>
+        <p class="sub">Use a transparent PNG with a clear window at the top where the photo shows through. Set the frame size below.</p>
         <label class="lab" for="aName">Frame name</label>
         <input class="inp" id="aName" placeholder="Official frame">
-        <label class="lab" for="aWin">Photo window height (px, out of 1350)</label>
-        <input class="inp" id="aWin" type="number" value="1180" min="300" max="1350">
+        <div style="display:flex;gap:10px">
+          <div style="flex:1"><label class="lab" for="aW">Frame width (px)</label><input class="inp" id="aW" type="number" value="1080" min="300" max="3000"></div>
+          <div style="flex:1"><label class="lab" for="aH">Frame height (px)</label><input class="inp" id="aH" type="number" value="1350" min="300" max="3000"></div>
+        </div>
+        <label class="lab" for="aWin">Photo window height (px, from the top)</label>
+        <input class="inp" id="aWin" type="number" value="1180" min="100" max="3000">
         <div class="row">
           <button class="ghost" id="aPick" type="button">Choose Frame PNG</button>
           <button class="btn" id="aUp" type="button" disabled>Upload Frame</button>
@@ -316,7 +355,7 @@
     <img data-logo src="" alt="">
     <b>Al-Fana Wal-Baqa Aslami Fest 2026</b>
     December 4 &amp; 5 · Official Photo Frame<br>
-    &copy; <span id="year"></span> All rights reserved.<br><a class="adm" href="#admin">Admin</a>
+    &copy; <span id="year"></span> All rights reserved.
   </div>
 </footer>
 
@@ -339,9 +378,9 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const c = $('c'), ctx = c.getContext('2d');
-const W = c.width, H = c.height; let WIN = CONFIG.windowHeight;
+let W = c.width, H = c.height; let WX = 0, WY = 0, WW = W, WH = CONFIG.windowHeight, WSH = 'rect', WR = 0;
 let photo = null, frameImg = null, frameOk = false;
-let px = W / 2, py = WIN / 2, base = 1, mult = 1;
+let px = W / 2, py = WH / 2, base = 1, mult = 1;
 const pointers = new Map();
 let pinchStart = null;
 $('year').textContent = new Date().getFullYear();
@@ -353,7 +392,8 @@ function route() {
   $('viewEditor').hidden = !editor;
   $('viewAdmin').hidden = !admin;
   $('nEdit').classList.toggle('on', editor);
-  $('nHome').classList.toggle('on', !editor);
+  $('nHome').classList.toggle('on', !editor && !admin);
+  $('nAdmin').classList.toggle('on', admin);
   if (editor) { window.scrollTo(0, 0); draw(); }
   else if (location.hash === '#how') { setTimeout(() => $('how').scrollIntoView(), 0); }
   else window.scrollTo(0, 0);
@@ -365,10 +405,17 @@ function loadFrame(f) {
   const img = new Image();
   img.onload = () => {
     frameImg = img; frameOk = true;
-    WIN = Math.min(H, Math.max(300, +f.win || CONFIG.windowHeight));
-    $('drop').style.height = (WIN / H * 100) + '%';
-    if (photo) { base = Math.max(W / photo.width, WIN / photo.height); resetAll(); }
-    else { px = W / 2; py = WIN / 2; }
+    W = Math.min(3000, Math.max(300, +f.w || 1080)); H = Math.min(3000, Math.max(300, +f.h || 1350));
+    c.width = W; c.height = H;
+    const pv = $('pv'); pv.width = 540; pv.height = Math.round(540 * H / W);
+    const m = f.meta;
+    if (m && m.ww) { WX = +m.wx; WY = +m.wy; WW = +m.ww; WH = +m.wh; WSH = m.shape || 'rect'; WR = +m.r || 0; }
+    else { WX = 0; WY = 0; WW = W; WH = Math.min(H, Math.max(100, +f.win || CONFIG.windowHeight)); WSH = 'rect'; WR = 0; }
+    const dr = $('drop').style;
+    dr.right = 'auto'; dr.left = (WX / W * 100) + '%'; dr.top = (WY / H * 100) + '%';
+    dr.width = (WW / W * 100) + '%'; dr.height = (WH / H * 100) + '%';
+    if (photo) { base = Math.max(WW / photo.width, WH / photo.height); resetAll(); }
+    else { px = WX + WW / 2; py = WY + WH / 2; }
     draw(); drawPreview();
   };
   img.onerror = () => { frameImg = null; frameOk = false; draw(); };
@@ -396,22 +443,36 @@ function draw() {
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, W, H);
   if (photo) {
+    ctx.save(); wpath(ctx, WX, WY, WW, WH, WSH, WR); ctx.clip();
     const s = base * mult, w = photo.width * s, h = photo.height * s;
     ctx.drawImage(photo, px - w / 2, py - h / 2, w, h);
+    ctx.restore();
   }
   if (frameOk) ctx.drawImage(frameImg, 0, 0, W, H);
 }
 
 /* home page live preview: neutral silhouette inside the frame */
+function wpath(g, x, y, w, h, shape, r) {
+  g.beginPath();
+  if (shape === 'circle') g.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  else if (shape === 'rounded') {
+    r = Math.max(0, Math.min(r, w / 2, h / 2));
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  } else g.rect(x, y, w, h);
+}
 function drawPreview() {
-  const p = $('pv'), g = p.getContext('2d'), w = p.width, h = p.height, win = h * WIN / H;
-  const grd = g.createLinearGradient(0, 0, w, win);
+  const p = $('pv'), g = p.getContext('2d'), w = p.width, h = p.height, k = w / W;
+  const wx = WX * k, wy = WY * k, ww = WW * k, wh = WH * k;
+  const grd = g.createLinearGradient(wx, wy, wx + ww, wy + wh);
   grd.addColorStop(0, '#5c2430'); grd.addColorStop(1, '#cfaf50');
   g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
-  g.fillStyle = grd; g.fillRect(0, 0, w, win);
+  g.save(); wpath(g, wx, wy, ww, wh, WSH, WR * k); g.clip();
+  g.fillStyle = grd; g.fillRect(wx, wy, ww, wh);
   g.fillStyle = 'rgba(255,255,255,.88)';
-  g.beginPath(); g.arc(w / 2, win * .38, w * .17, 0, Math.PI * 2); g.fill();
-  g.beginPath(); g.ellipse(w / 2, win * 1.02, w * .34, win * .36, 0, Math.PI, 0); g.fill();
+  g.beginPath(); g.arc(wx + ww / 2, wy + wh * .38, ww * .17, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.ellipse(wx + ww / 2, wy + wh * 1.02, ww * .34, wh * .36, 0, Math.PI, 0); g.fill();
+  g.restore();
   if (frameOk) g.drawImage(frameImg, 0, 0, w, h);
 }
 
@@ -422,8 +483,8 @@ function setZoom(m) {
   $('zoom').value = pct; $('zv').textContent = pct + '%';
   draw();
 }
-function centerPhoto() { px = W / 2; py = WIN / 2; draw(); }
-function resetAll() { px = W / 2; py = WIN / 2; setZoom(1); }
+function centerPhoto() { px = WX + WW / 2; py = WY + WH / 2; draw(); }
+function resetAll() { px = WX + WW / 2; py = WY + WH / 2; setZoom(1); }
 function loadPhoto(file) {
   if (!file) return;
   if (!/^image\//.test(file.type) && !/\.(jpe?g|png|webp|heic|heif)$/i.test(file.name)) {
@@ -433,7 +494,7 @@ function loadPhoto(file) {
   const img = new Image();
   img.onload = () => {
     photo = img;
-    base = Math.max(W / img.width, WIN / img.height); // fill the photo window
+    base = Math.max(WW / img.width, WH / img.height); // fill the photo window
     resetAll();
     $('drop').hidden = true;
     $('dlPng').disabled = $('dlJpg').disabled = false;
@@ -570,29 +631,34 @@ $('aOut').onclick = () => {
   adminCred = null; $('aDash').hidden = true; $('aLogin').hidden = false; $('aOut').hidden = true; location.hash = '#home';
 };
 
-let pickedFrame = null;
+let pickedImg = null;
 $('aPick').onclick = () => $('aFileIn').click();
 $('aFileIn').onchange = e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   const url = URL.createObjectURL(f), img = new Image();
   img.onload = () => {
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
-    cv.getContext('2d').drawImage(img, 0, 0, W, H);
-    pickedFrame = cv.toDataURL('image/png').split(',')[1];
-    $('aFile').textContent = 'Chosen: ' + f.name; $('aUp').disabled = false;
-    URL.revokeObjectURL(url);
+    pickedImg = img;
+    $('aW').value = img.width; $('aH').value = img.height;
+    $('aWin').value = Math.round(img.height * 0.874);
+    $('aFile').textContent = 'Chosen: ' + f.name + ' (' + img.width + ' x ' + img.height + '). Adjust the size and window if needed.';
+    $('aUp').disabled = false;
   };
   img.onerror = () => { URL.revokeObjectURL(url); say('aMsg2', 'This file could not be opened. Please choose a PNG.'); };
   img.src = url;
 };
 $('aUp').onclick = async () => {
-  if (!pickedFrame) return;
+  if (!pickedImg) return;
+  const w = Math.min(3000, Math.max(300, +$('aW').value || 1080)), h = Math.min(3000, Math.max(300, +$('aH').value || 1350));
+  const win = Math.min(h, Math.max(100, +$('aWin').value || Math.round(h * 0.874)));
+  const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  cv.getContext('2d').drawImage(pickedImg, 0, 0, w, h);
+  const data = cv.toDataURL('image/png').split(',')[1];
   const b = $('aUp'); b.disabled = true; say('aMsg2', 'Uploading... please wait.');
   try {
     const d = await apiPost({ action: 'add', user: adminCred.user, pass: adminCred.pass,
-      name: $('aName').value.trim() || 'Frame', win: +$('aWin').value || 1180, image: pickedFrame });
-    if (d.ok) { pickedFrame = null; $('aFile').textContent = 'No file chosen.'; $('aName').value = ''; say('aMsg2', 'Frame added.'); await refreshFrames(); }
+      name: $('aName').value.trim() || 'Frame', w, h, win, image: data });
+    if (d.ok) { pickedImg = null; $('aFile').textContent = 'No file chosen.'; $('aName').value = ''; say('aMsg2', 'Frame added.'); await refreshFrames(); }
     else { say('aMsg2', d.error || 'Something went wrong.'); b.disabled = false; }
   } catch (e) { say('aMsg2', 'Could not reach the server. Please try again.'); b.disabled = false; }
 };
@@ -608,6 +674,186 @@ $('nGo').onclick = async () => {
     else say('aMsg3', d.error || 'Something went wrong.');
   } catch (e) { say('aMsg3', 'Could not reach the server. Please try again.'); }
 };
+
+/* ---------- frame designer ---------- */
+const DZ_KEY = 'alfana_design_v1';
+const dc = $('dc'), dg = dc.getContext('2d');
+const imgCache = {};
+function getImg(src) {
+  if (imgCache[src]) return imgCache[src];
+  const i = new Image(); i.onload = () => drawDz(); i.src = src; imgCache[src] = i; return i;
+}
+function defaultDesign() {
+  return { w: 1080, h: 1350, bg1: '#5c2430', bg2: '#14080c', dir: 'v', bcolor: '#cfaf50', bsize: 14,
+    win: { x: 70, y: 70, w: 940, h: 900, shape: 'rounded', r: 40, bcolor: '#cfaf50', bsize: 8 },
+    items: [
+      { t: 'text', text: 'Al-Fana Wal-Baqa', x: 540, y: 1075, size: 78, color: '#f7f1e3', font: 'serif', weight: 'bold' },
+      { t: 'text', text: 'Aslami Fest 2026', x: 540, y: 1160, size: 46, color: '#e8cf84', font: 'serif', weight: 'normal' },
+      { t: 'text', text: 'DECEMBER 4 & 5', x: 540, y: 1240, size: 34, color: '#f7f1e3', font: 'sans', weight: 'bold' }
+    ] };
+}
+let D = defaultDesign(), sel = 'bg';
+try { const t = localStorage.getItem(DZ_KEY); if (t) D = JSON.parse(t); } catch (e) {}
+let saveT = null;
+function persist() { clearTimeout(saveT); saveT = setTimeout(() => { try { localStorage.setItem(DZ_KEY, JSON.stringify(D)); } catch (e) {} }, 500); }
+const fontOf = it => (it.weight === 'bold' ? '700 ' : '500 ') + it.size + 'px ' + (it.font === 'serif' ? '"Cormorant Garamond",Georgia,serif' : 'Inter,system-ui,sans-serif');
+function bbox(g, it) {
+  if (it.t === 'text') { g.font = fontOf(it); const w = g.measureText(it.text).width; return { x: it.x - w / 2, y: it.y - it.size * .6, w, h: it.size * 1.2 }; }
+  if (it.t === 'img') { const i = getImg(it.src), h = i.naturalWidth ? it.w * i.naturalHeight / i.naturalWidth : it.w; return { x: it.x - it.w / 2, y: it.y - h / 2, w: it.w, h }; }
+  return { x: it.x - it.w / 2, y: it.y - it.h / 2, w: it.w, h: it.h };
+}
+function renderDesign(g, d, selected) {
+  g.clearRect(0, 0, d.w, d.h);
+  const gr = d.dir === 'h' ? g.createLinearGradient(0, 0, d.w, 0) : d.dir === 'd' ? g.createLinearGradient(0, 0, d.w, d.h) : g.createLinearGradient(0, 0, 0, d.h);
+  gr.addColorStop(0, d.bg1); gr.addColorStop(1, d.bg2);
+  g.fillStyle = gr; g.fillRect(0, 0, d.w, d.h);
+  if (d.bsize > 0) { g.strokeStyle = d.bcolor; g.lineWidth = d.bsize * 2; g.strokeRect(0, 0, d.w, d.h); }
+  d.items.forEach(it => {
+    g.save();
+    if (it.t === 'text') { g.font = fontOf(it); g.fillStyle = it.color; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(it.text, it.x, it.y); }
+    else if (it.t === 'img') { const i = getImg(it.src); if (i.complete && i.naturalWidth) { const h = it.w * i.naturalHeight / i.naturalWidth; g.drawImage(i, it.x - it.w / 2, it.y - h / 2, it.w, h); } }
+    else { g.globalAlpha = it.alpha; g.fillStyle = it.color; g.fillRect(it.x - it.w / 2, it.y - it.h / 2, it.w, it.h); }
+    g.restore();
+  });
+  const w = d.win;
+  g.save(); g.globalCompositeOperation = 'destination-out'; g.fillStyle = '#000'; wpath(g, w.x, w.y, w.w, w.h, w.shape, w.r); g.fill(); g.restore();
+  if (w.bsize > 0) { g.strokeStyle = w.bcolor; g.lineWidth = w.bsize; wpath(g, w.x, w.y, w.w, w.h, w.shape, w.r); g.stroke(); }
+  if (selected !== null && selected !== undefined && selected !== 'bg') {
+    const b = selected === 'win' ? { x: w.x, y: w.y, w: w.w, h: w.h } : bbox(g, d.items[selected]);
+    g.save(); g.strokeStyle = '#00e5ff'; g.lineWidth = Math.max(3, d.w / 280); g.setLineDash([14, 10]); g.strokeRect(b.x, b.y, b.w, b.h); g.restore();
+  }
+}
+function drawDz() {
+  if (dc.width !== D.w) dc.width = D.w;
+  if (dc.height !== D.h) dc.height = D.h;
+  renderDesign(dg, D, sel);
+}
+function dzLabel(it, i) { return it.t === 'text' ? 'Text: ' + it.text.slice(0, 14) : it.t === 'img' ? 'Image ' + (i + 1) : 'Bar ' + (i + 1); }
+function buildList() {
+  const box = $('dzList'); box.innerHTML = '';
+  const add = (label, key) => {
+    const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost chip' + (sel === key ? ' on' : ''); b.textContent = label;
+    b.onclick = () => { sel = key; buildList(); buildProps(); drawDz(); }; box.appendChild(b);
+  };
+  add('Background & Size', 'bg'); add('Photo Window', 'win');
+  D.items.forEach((it, i) => add(dzLabel(it, i), i));
+}
+function fld(parent, label, obj, key, type, opts, full) {
+  const wrap = document.createElement('div'); if (full) wrap.className = 'full';
+  const l = document.createElement('label'); l.className = 'lab'; l.textContent = label; wrap.appendChild(l);
+  let i;
+  if (type === 'select') {
+    i = document.createElement('select');
+    opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; i.appendChild(o); });
+  } else { i = document.createElement('input'); i.type = type; if (type === 'number') i.step = 'any'; }
+  i.className = 'inp'; i.value = obj[key];
+  i.oninput = () => {
+    if (type === 'number') { const n = parseFloat(i.value); if (!isFinite(n)) return; obj[key] = n; }
+    else obj[key] = i.value;
+    if (obj === D && (key === 'w' || key === 'h')) { obj[key] = Math.min(3000, Math.max(300, obj[key])); }
+    if (key === 'text') buildListLabelsOnly();
+    drawDz(); persist();
+  };
+  wrap.appendChild(i); parent.appendChild(wrap); return i;
+}
+function buildListLabelsOnly() { const bs = $('dzList').children; D.items.forEach((it, i) => { if (bs[i + 2]) bs[i + 2].textContent = dzLabel(it, i); }); }
+function buildProps() {
+  const box = $('dzProps'); box.innerHTML = '';
+  const g = document.createElement('div'); g.className = 'pr'; box.appendChild(g);
+  if (sel === 'bg') {
+    fld(g, 'Frame width (px)', D, 'w', 'number'); fld(g, 'Frame height (px)', D, 'h', 'number');
+    fld(g, 'Background colour 1', D, 'bg1', 'color'); fld(g, 'Background colour 2', D, 'bg2', 'color');
+    fld(g, 'Colour direction', D, 'dir', 'select', [['v', 'Top to bottom'], ['h', 'Left to right'], ['d', 'Diagonal']], true);
+    fld(g, 'Outer border colour', D, 'bcolor', 'color'); fld(g, 'Outer border thickness', D, 'bsize', 'number');
+  } else if (sel === 'win') {
+    const w = D.win;
+    fld(g, 'Window left (x)', w, 'x', 'number'); fld(g, 'Window top (y)', w, 'y', 'number');
+    fld(g, 'Window width', w, 'w', 'number'); fld(g, 'Window height', w, 'h', 'number');
+    fld(g, 'Window shape', w, 'shape', 'select', [['rect', 'Rectangle'], ['rounded', 'Rounded corners'], ['circle', 'Circle / Oval']]);
+    fld(g, 'Corner roundness', w, 'r', 'number');
+    fld(g, 'Window border colour', w, 'bcolor', 'color'); fld(g, 'Window border thickness', w, 'bsize', 'number');
+  } else {
+    const it = D.items[sel]; if (!it) return;
+    if (it.t === 'text') {
+      fld(g, 'Text', it, 'text', 'text', null, true);
+      fld(g, 'Size', it, 'size', 'number'); fld(g, 'Colour', it, 'color', 'color');
+      fld(g, 'Style', it, 'font', 'select', [['serif', 'Elegant (serif)'], ['sans', 'Clean (sans)']]);
+      fld(g, 'Weight', it, 'weight', 'select', [['bold', 'Bold'], ['normal', 'Normal']]);
+    } else if (it.t === 'img') {
+      fld(g, 'Width', it, 'w', 'number');
+    } else {
+      fld(g, 'Width', it, 'w', 'number'); fld(g, 'Height', it, 'h', 'number');
+      fld(g, 'Colour', it, 'color', 'color'); fld(g, 'Opacity (0 to 1)', it, 'alpha', 'number');
+    }
+    fld(g, 'Position left-right (x)', it, 'x', 'number'); fld(g, 'Position up-down (y)', it, 'y', 'number');
+    const row = document.createElement('div'); row.className = 'row full'; row.style.gridColumn = '1/-1';
+    const mk = (t, fn) => { const b = document.createElement('button'); b.type = 'button'; b.className = 'ghost chip'; b.textContent = t; b.onclick = fn; row.appendChild(b); };
+    mk('Move Forward', () => { const i = sel; if (i < D.items.length - 1) { [D.items[i], D.items[i + 1]] = [D.items[i + 1], D.items[i]]; sel = i + 1; refreshDz(); } });
+    mk('Move Back', () => { const i = sel; if (i > 0) { [D.items[i], D.items[i - 1]] = [D.items[i - 1], D.items[i]]; sel = i - 1; refreshDz(); } });
+    mk('Delete', () => { D.items.splice(sel, 1); sel = 'bg'; refreshDz(); });
+    g.appendChild(row);
+  }
+}
+function refreshDz() { buildList(); buildProps(); drawDz(); persist(); }
+function addItem(it) { D.items.push(it); sel = D.items.length - 1; refreshDz(); }
+$('dzText').onclick = () => addItem({ t: 'text', text: 'New text', x: D.w / 2, y: D.h - 100, size: 60, color: '#f7f1e3', font: 'sans', weight: 'bold' });
+$('dzBar').onclick = () => addItem({ t: 'bar', x: D.w / 2, y: D.h - 60, w: D.w, h: 90, color: '#cfaf50', alpha: 1 });
+$('dzLogo').onclick = () => addItem({ t: 'img', src: LOGO, x: D.w / 2, y: D.h - 110, w: 160 });
+$('dzImg').onclick = () => $('dzFile').click();
+$('dzFile').onchange = e => {
+  const f = e.target.files[0]; e.target.value = ''; if (!f) return;
+  const url = URL.createObjectURL(f), img = new Image();
+  img.onload = () => {
+    const k = Math.min(1, 900 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+    cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+    cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height); URL.revokeObjectURL(url);
+    addItem({ t: 'img', src: cv.toDataURL('image/png'), x: D.w / 2, y: D.h / 2, w: Math.min(300, D.w / 3) });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); say('dzMsg', 'This image could not be opened.'); };
+  img.src = url;
+};
+$('dzReset').onclick = () => { if (confirm('Start the design over?')) { D = defaultDesign(); sel = 'bg'; refreshDz(); } };
+
+/* drag on the designer picture */
+let drag = null;
+dc.addEventListener('pointerdown', e => {
+  const r = dc.getBoundingClientRect(), k = D.w / r.width, x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+  let hit = 'bg';
+  for (let i = D.items.length - 1; i >= 0; i--) { const b = bbox(dg, D.items[i]); if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) { hit = i; break; } }
+  if (hit === 'bg') { const w = D.win; if (x >= w.x && x <= w.x + w.w && y >= w.y && y <= w.y + w.h) hit = 'win'; }
+  sel = hit; buildList(); buildProps(); drawDz();
+  if (hit !== 'bg') { dc.setPointerCapture(e.pointerId); drag = { px: e.clientX, py: e.clientY, k }; }
+});
+dc.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = (e.clientX - drag.px) * drag.k, dy = (e.clientY - drag.py) * drag.k;
+  drag.px = e.clientX; drag.py = e.clientY;
+  const o = sel === 'win' ? D.win : D.items[sel];
+  o.x = Math.round(o.x + dx); o.y = Math.round(o.y + dy); drawDz();
+});
+const dzUp = () => { if (drag) { drag = null; buildProps(); persist(); } };
+dc.addEventListener('pointerup', dzUp); dc.addEventListener('pointercancel', dzUp);
+
+$('dzSave').onclick = async () => {
+  if (!adminCred) return;
+  const b = $('dzSave'); b.disabled = true; say('dzMsg', 'Saving... please wait.');
+  try {
+    await Promise.all(D.items.filter(i => i.t === 'img').map(i => new Promise(res => { const m = getImg(i.src); if (m.complete) res(); else { m.onload = res; m.onerror = res; } })));
+    try { await document.fonts.load('700 40px "Cormorant Garamond"'); await document.fonts.load('600 40px Inter'); } catch (e) {}
+    const cv = document.createElement('canvas'); cv.width = D.w; cv.height = D.h;
+    renderDesign(cv.getContext('2d'), D, null);
+    const w = D.win;
+    const d = await apiPost({ action: 'add', user: adminCred.user, pass: adminCred.pass,
+      name: $('dzName').value.trim() || 'Designed frame', w: D.w, h: D.h, win: Math.round(w.y + w.h),
+      meta: { wx: w.x, wy: w.y, ww: w.w, wh: w.h, shape: w.shape, r: w.r },
+      image: cv.toDataURL('image/png').split(',')[1] });
+    if (d.ok) { say('dzMsg', 'Saved. Your new frame is live.'); $('dzName').value = ''; await refreshFrames(); }
+    else say('dzMsg', d.error || 'Something went wrong.');
+  } catch (e) { say('dzMsg', 'Could not reach the server. Please try again.'); }
+  b.disabled = false;
+};
+buildList(); buildProps(); drawDz();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawDz);
 refreshFrames();
 </script>
 </body>
