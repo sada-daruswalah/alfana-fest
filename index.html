@@ -148,6 +148,7 @@
   .lockscr{min-height:70vh;display:grid;place-items:center;text-align:center;padding:40px 20px}
   .lockscr h1{font-family:var(--serif);font-size:clamp(34px,7vw,52px)}
   .lockscr p{color:var(--muted);margin-top:8px}
+  .uform{max-width:320px;margin:26px auto 0;text-align:left}
   .lockico{font-size:54px;margin-bottom:10px}
   body.locked .brand, body.locked #nHome, body.locked #nEdit, body.locked footer, body.locked #viewHome, body.locked #viewEditor{display:none!important}
   body.locked .nav{justify-content:flex-start}
@@ -177,7 +178,13 @@
   <div class="wrap">
     <div class="lockico">&#128274;</div>
     <h1>Site Locked</h1>
-    <p>This page is closed for now. Please check back later.</p>
+    <p>This page is closed for now. If you have an entry password, enter it below.</p>
+    <div class="uform">
+      <label class="lab" for="uPw">User entry password</label>
+      <input class="inp" id="uPw" type="password" autocomplete="off">
+      <div class="row"><button class="btn" id="uGo" type="button" style="width:100%">Enter</button></div>
+      <p class="msg" id="uMsg"></p>
+    </div>
   </div>
 </div>
 
@@ -327,6 +334,12 @@
         <h3>Site Lock</h3>
         <p class="sub" id="lkTxt"></p>
         <div id="lkSlot"></div>
+        <div class="sep"></div>
+        <h3 style="font-size:18px">User Entry Password</h3>
+        <p class="sub">When the site is locked, visitors can get in with this password. Changing it does not unlock the site.</p>
+        <label class="lab" for="uP">New user entry password (at least 4 characters)</label>
+        <input class="inp" id="uP" type="password" autocomplete="new-password">
+        <div id="uSlot" style="margin-top:14px"></div>
         <p class="msg" id="aMsg4"></p>
       </div>
       <div class="panel">
@@ -422,7 +435,7 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const c = $('c'), ctx = c.getContext('2d');
-var LOCKED = false; try { LOCKED = localStorage.getItem('alfana_locked') === '1'; } catch (e) {}
+var LOCKED = false, LOCKV = '0', USERV = ''; try { LOCKED = localStorage.getItem('alfana_locked') === '1'; LOCKV = localStorage.getItem('alfana_lv') || '0'; USERV = localStorage.getItem('alfana_uv') || ''; } catch (e) {}
 let W = c.width, H = c.height; let WX = 0, WY = 0, WW = W, WH = CONFIG.windowHeight, WSH = 'rect', WR = 0;
 let photo = null, frameImg = null, frameOk = false;
 let px = W / 2, py = WH / 2, base = 1, mult = 1;
@@ -675,18 +688,19 @@ const apiPost = async body => (await fetch(CONFIG.api, { method: 'POST', headers
 const say = (id, t) => { $(id).textContent = t; };
 
 function applyLock() {
-  const on = LOCKED && !adminCred;
+  const on = LOCKED && !adminCred && USERV !== LOCKV;
   document.body.classList.toggle('locked', on);
   $('lockScr').hidden = !(on && location.hash !== '#admin');
 }
-function setLocked(v) {
+function setLocked(v, ver) {
   LOCKED = !!v;
-  try { localStorage.setItem('alfana_locked', LOCKED ? '1' : '0'); } catch (e) {}
+  if (ver !== undefined && ver !== null) LOCKV = String(ver);
+  try { localStorage.setItem('alfana_locked', LOCKED ? '1' : '0'); localStorage.setItem('alfana_lv', LOCKV); } catch (e) {}
   applyLock(); updateLockUI();
 }
 async function checkLock() {
   if (!CONFIG.api) return;
-  try { const d = await (await fetch(CONFIG.api + '?mode=status')).json(); if (d && d.ok) setLocked(d.locked); } catch (e) {}
+  try { const d = await (await fetch(CONFIG.api + '?mode=status')).json(); if (d && d.ok) setLocked(d.locked, d.v); } catch (e) {}
 }
 /* slide-to-confirm button */
 function mkSlide(label, onDone) {
@@ -718,7 +732,7 @@ function mkSlide(label, onDone) {
 let lkSw = null;
 function updateLockUI() {
   if (!lkSw) return;
-  $('lkTxt').textContent = LOCKED ? 'The site is LOCKED. Visitors see only the Admin button at the top left.' : 'The site is open to everyone.';
+  $('lkTxt').textContent = LOCKED ? 'The site is LOCKED. Visitors see the lock page with the Admin button and a user entry box.' : 'The site is open to everyone.';
   lkSw.setLabel(LOCKED ? 'Slide to unlock the site' : 'Slide to lock the site');
 }
 async function refreshFrames() {
@@ -726,7 +740,7 @@ async function refreshFrames() {
   try {
     const d = await apiGet();
     if (d && d.ok) {
-      if (typeof d.locked === 'boolean') setLocked(d.locked);
+      if (typeof d.locked === 'boolean') setLocked(d.locked, d.v);
       serverFrames = d.frames || [];
       CONFIG.frames = serverFrames.length ? serverFrames : DEFAULT_FRAMES;
       buildFrameList(); loadFrame(CONFIG.frames[0]);
@@ -1022,7 +1036,7 @@ buildList(); buildProps(); drawDz();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawDz);
 
 /* ---------- show / hide password ---------- */
-['aP', 'nP', 'nP2'].forEach(id => {
+['aP', 'nP', 'nP2', 'uPw', 'uP'].forEach(id => {
   const i = $(id), w = document.createElement('div'); w.className = 'pw';
   i.parentNode.insertBefore(w, i); w.appendChild(i);
   const b = document.createElement('button'); b.type = 'button'; b.className = 'eye'; b.textContent = 'Show';
@@ -1045,6 +1059,30 @@ lkSw = mkSlide('Slide to lock the site', async () => {
   } catch (e) { say('aMsg4', 'Could not reach the server. Please try again.'); }
 });
 $('lkSlot').appendChild(lkSw); updateLockUI(); applyLock();
+
+/* ---------- user entry (when locked) ---------- */
+$('uGo').onclick = async () => {
+  if (!CONFIG.api) { say('uMsg', 'The server link is not set yet.'); return; }
+  say('uMsg', 'Checking...');
+  try {
+    const d = await apiPost({ action: 'userlogin', pass: $('uPw').value });
+    if (d.ok) {
+      USERV = LOCKV = String(d.v);
+      try { localStorage.setItem('alfana_uv', USERV); localStorage.setItem('alfana_lv', LOCKV); } catch (e) {}
+      $('uPw').value = ''; say('uMsg', ''); applyLock();
+    } else say('uMsg', 'Wrong password.');
+  } catch (e) { say('uMsg', 'Could not reach the server. Please try again.'); }
+};
+$('uPw').addEventListener('keydown', e => { if (e.key === 'Enter') $('uGo').click(); });
+$('uSlot').appendChild(mkSlide('Slide to save user password', async () => {
+  const pw = $('uP').value;
+  if (pw.length < 4) { say('aMsg4', 'The user password needs at least 4 characters.'); return; }
+  say('aMsg4', 'Saving...');
+  try {
+    const d = await apiPost({ action: 'upass', user: adminCred.user, pass: adminCred.pass, newPass: pw });
+    if (d.ok) { $('uP').value = ''; say('aMsg4', 'User entry password changed.'); } else say('aMsg4', d.error || 'Something went wrong.');
+  } catch (e) { say('aMsg4', 'Could not reach the server. Please try again.'); }
+}));
 checkLock();
 refreshFrames();
 </script>
