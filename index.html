@@ -138,6 +138,19 @@
   .pw{position:relative}
   .pw .inp{padding-right:74px}
   .eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:0;color:var(--gold2);font:600 13px var(--sans);cursor:pointer;padding:10px}
+  /* slide button */
+  .sw{position:relative;height:56px;border-radius:999px;background:rgba(255,255,255,.06);border:1px solid var(--gold);overflow:hidden;user-select:none;-webkit-user-select:none;display:flex;align-items:center;justify-content:center;outline:none}
+  .sw:focus-visible{box-shadow:0 0 0 2px var(--gold2)}
+  .sw span{font:600 14px var(--sans);color:var(--gold2);padding-left:44px;pointer-events:none;letter-spacing:.02em}
+  .swk{position:absolute;left:4px;top:4px;width:46px;height:46px;border-radius:50% 6px 50% 6px;background:linear-gradient(135deg,#f3b6c8,#d9728f);color:#3b0f1c;display:grid;place-items:center;font:700 26px var(--sans);cursor:grab;touch-action:none;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  .swk:active{cursor:grabbing}
+  .sw.off{opacity:.4;pointer-events:none}
+  .lockscr{min-height:70vh;display:grid;place-items:center;text-align:center;padding:40px 20px}
+  .lockscr h1{font-family:var(--serif);font-size:clamp(34px,7vw,52px)}
+  .lockscr p{color:var(--muted);margin-top:8px}
+  .lockico{font-size:54px;margin-bottom:10px}
+  body.locked .brand, body.locked #nHome, body.locked #nEdit, body.locked footer, body.locked #viewHome, body.locked #viewEditor{display:none!important}
+  body.locked .nav{justify-content:flex-start}
   footer{border-top:1px solid var(--line);padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
   footer img{width:56px;height:56px;border-radius:50%;background:#fff;padding:6px;object-fit:contain;margin-bottom:10px}
   footer b{display:block;font-family:var(--serif);font-size:20px;color:var(--ivory);margin-bottom:4px}
@@ -159,6 +172,14 @@
     </nav>
   </div>
 </header>
+
+<div id="lockScr" class="lockscr" hidden>
+  <div class="wrap">
+    <div class="lockico">&#128274;</div>
+    <h1>Site Locked</h1>
+    <p>This page is closed for now. Please check back later.</p>
+  </div>
+</div>
 
 <!-- ============ HOME ============ -->
 <main id="viewHome">
@@ -302,6 +323,12 @@
     </div>
 
     <div id="aDash" hidden>
+      <div class="panel" style="margin-bottom:22px">
+        <h3>Site Lock</h3>
+        <p class="sub" id="lkTxt"></p>
+        <div id="lkSlot"></div>
+        <p class="msg" id="aMsg4"></p>
+      </div>
       <div class="panel">
         <h3>Frames</h3>
         <p class="sub">The first frame is shown to visitors by default. Visitors can choose any frame when there are two or more.</p>
@@ -325,9 +352,9 @@
         <label class="lab" for="dzName">Frame name</label>
         <input class="inp" id="dzName" placeholder="Official frame">
         <div class="row">
-          <button class="btn" id="dzSave" type="button">Save as New Frame</button>
           <button class="ghost" id="dzReset" type="button">Start Over</button>
         </div>
+        <div id="dzSlot" style="margin-top:14px"></div>
         <p class="msg" id="dzMsg"></p>
         <input type="file" id="dzFile" accept="image/*">
       </div>
@@ -345,8 +372,8 @@
         <input class="inp" id="aWin" type="number" value="1180" min="100" max="3000">
         <div class="row">
           <button class="ghost" id="aPick" type="button">Choose Frame PNG</button>
-          <button class="btn" id="aUp" type="button" disabled>Upload Frame</button>
         </div>
+        <div id="aUpSlot" style="margin-top:14px"></div>
         <p class="hint" id="aFile">No file chosen.</p>
         <input type="file" id="aFileIn" accept="image/png">
         <p class="msg" id="aMsg2"></p>
@@ -360,7 +387,7 @@
         <input class="inp" id="nP" type="password" autocomplete="new-password">
         <label class="lab" for="nP2">Repeat new password</label>
         <input class="inp" id="nP2" type="password" autocomplete="new-password">
-        <div class="row"><button class="btn" id="nGo" type="button">Save New Login</button></div>
+        <div id="nGoSlot" style="margin-top:14px"></div>
         <p class="msg" id="aMsg3"></p>
       </div>
     </div>
@@ -395,6 +422,7 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const c = $('c'), ctx = c.getContext('2d');
+var LOCKED = false; try { LOCKED = localStorage.getItem('alfana_locked') === '1'; } catch (e) {}
 let W = c.width, H = c.height; let WX = 0, WY = 0, WW = W, WH = CONFIG.windowHeight, WSH = 'rect', WR = 0;
 let photo = null, frameImg = null, frameOk = false;
 let px = W / 2, py = WH / 2, base = 1, mult = 1;
@@ -411,6 +439,7 @@ function route() {
   $('nEdit').classList.toggle('on', editor);
   $('nHome').classList.toggle('on', !editor && !admin);
   $('nAdmin').classList.toggle('on', admin);
+  applyLock();
   if (editor) { window.scrollTo(0, 0); draw(); }
   else if (location.hash === '#how') { setTimeout(() => $('how').scrollIntoView(), 0); }
   else window.scrollTo(0, 0);
@@ -640,16 +669,64 @@ route();
 
 /* ---------- server frames & admin ---------- */
 const DEFAULT_FRAMES = CONFIG.frames.slice();
-let adminCred = null, serverFrames = [];
+var adminCred = null, serverFrames = [];
 const apiGet = async () => (await fetch(CONFIG.api)).json();
 const apiPost = async body => (await fetch(CONFIG.api, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body) })).json();
 const say = (id, t) => { $(id).textContent = t; };
 
+function applyLock() {
+  const on = LOCKED && !adminCred;
+  document.body.classList.toggle('locked', on);
+  $('lockScr').hidden = !(on && location.hash !== '#admin');
+}
+function setLocked(v) {
+  LOCKED = !!v;
+  try { localStorage.setItem('alfana_locked', LOCKED ? '1' : '0'); } catch (e) {}
+  applyLock(); updateLockUI();
+}
+async function checkLock() {
+  if (!CONFIG.api) return;
+  try { const d = await (await fetch(CONFIG.api + '?mode=status')).json(); if (d && d.ok) setLocked(d.locked); } catch (e) {}
+}
+/* slide-to-confirm button */
+function mkSlide(label, onDone) {
+  const el = document.createElement('div'); el.className = 'sw'; el.tabIndex = 0; el.setAttribute('role', 'button');
+  const sp = document.createElement('span'); sp.textContent = label;
+  const k = document.createElement('div'); k.className = 'swk'; k.textContent = '\u203A';
+  el.append(sp, k);
+  let x0 = null, max = 0, busy = false, dx = 0;
+  const fire = async () => { busy = true; try { await onDone(); } catch (e) {} busy = false; };
+  k.addEventListener('pointerdown', e => {
+    if (busy) return; k.setPointerCapture(e.pointerId); x0 = e.clientX; dx = 0;
+    max = el.clientWidth - k.offsetWidth - 8; k.style.transition = 'none';
+  });
+  k.addEventListener('pointermove', e => {
+    if (x0 === null) return;
+    dx = Math.max(0, Math.min(max, e.clientX - x0));
+    k.style.transform = 'translateX(' + dx + 'px)'; sp.style.opacity = 1 - dx / max;
+  });
+  const end = async () => {
+    if (x0 === null) return; x0 = null; k.style.transition = 'transform .25s';
+    if (dx >= max * 0.9) { k.style.transform = 'translateX(' + max + 'px)'; await fire(); }
+    k.style.transform = ''; sp.style.opacity = 1; dx = 0;
+  };
+  k.addEventListener('pointerup', end); k.addEventListener('pointercancel', end);
+  el.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && !busy) { e.preventDefault(); fire(); } });
+  el.setLabel = t => { sp.textContent = t; }; el.setOff = f => el.classList.toggle('off', !!f);
+  return el;
+}
+let lkSw = null;
+function updateLockUI() {
+  if (!lkSw) return;
+  $('lkTxt').textContent = LOCKED ? 'The site is LOCKED. Visitors see only the Admin button at the top left.' : 'The site is open to everyone.';
+  lkSw.setLabel(LOCKED ? 'Slide to unlock the site' : 'Slide to lock the site');
+}
 async function refreshFrames() {
   if (!CONFIG.api) return;
   try {
     const d = await apiGet();
     if (d && d.ok) {
+      if (typeof d.locked === 'boolean') setLocked(d.locked);
       serverFrames = d.frames || [];
       CONFIG.frames = serverFrames.length ? serverFrames : DEFAULT_FRAMES;
       buildFrameList(); loadFrame(CONFIG.frames[0]);
@@ -671,7 +748,11 @@ function renderAdminList() {
       row.appendChild(a);
     }
     const d = document.createElement('button'); d.className = 'ghost'; d.textContent = 'Delete';
-    d.onclick = () => { if (confirm('Delete this frame?')) frameAct({ action: 'remove', id: f.id }, d); };
+    d.onclick = () => {
+      if (row._sw) { row._sw.remove(); row._sw = null; return; }
+      const sw = mkSlide('Slide to delete this frame', () => frameAct({ action: 'remove', id: f.id }, d));
+      sw.style.margin = '10px 0'; row.after(sw); row._sw = sw;
+    };
     row.appendChild(d);
     box.appendChild(row);
   });
@@ -715,19 +796,19 @@ $('aFileIn').onchange = e => {
     $('aW').value = img.width; $('aH').value = img.height;
     $('aWin').value = Math.round(img.height * 0.874);
     $('aFile').textContent = 'Chosen: ' + f.name + ' (' + img.width + ' x ' + img.height + '). Adjust the size and window if needed.';
-    $('aUp').disabled = false;
+    upSlide.setOff(false);
   };
   img.onerror = () => { URL.revokeObjectURL(url); say('aMsg2', 'This file could not be opened. Please choose a PNG.'); };
   img.src = url;
 };
-$('aUp').onclick = async () => {
+const upFn = async () => {
   if (!pickedImg) return;
   const w = Math.min(3000, Math.max(300, +$('aW').value || 1080)), h = Math.min(3000, Math.max(300, +$('aH').value || 1350));
   const win = Math.min(h, Math.max(100, +$('aWin').value || Math.round(h * 0.874)));
   const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
   cv.getContext('2d').drawImage(pickedImg, 0, 0, w, h);
   const data = cv.toDataURL('image/png').split(',')[1];
-  const b = $('aUp'); b.disabled = true; say('aMsg2', 'Uploading... please wait.');
+  const b = {}; say('aMsg2', 'Uploading... please wait.');
   try {
     const d = await apiPost({ action: 'add', user: adminCred.user, pass: adminCred.pass,
       name: $('aName').value.trim() || 'Frame', w, h, win, image: data });
@@ -735,7 +816,7 @@ $('aUp').onclick = async () => {
     else { say('aMsg2', d.error || 'Something went wrong.'); b.disabled = false; }
   } catch (e) { say('aMsg2', 'Could not reach the server. Please try again.'); b.disabled = false; }
 };
-$('nGo').onclick = async () => {
+const nGoFn = async () => {
   const u = $('nU').value.trim(), p = $('nP').value, p2 = $('nP2').value;
   if (!u) { say('aMsg3', 'Please enter a username.'); return; }
   if (p.length < 6) { say('aMsg3', 'The password needs at least 6 characters.'); return; }
@@ -919,9 +1000,9 @@ dc.addEventListener('pointermove', e => {
 const dzUp = () => { if (drag) { drag = null; buildProps(); persist(); } };
 dc.addEventListener('pointerup', dzUp); dc.addEventListener('pointercancel', dzUp);
 
-$('dzSave').onclick = async () => {
+const dzSaveFn = async () => {
   if (!adminCred) return;
-  const b = $('dzSave'); b.disabled = true; say('dzMsg', 'Saving... please wait.');
+  const b = {}; say('dzMsg', 'Saving... please wait.');
   try {
     await Promise.all(D.items.filter(i => i.t === 'img').map(i => new Promise(res => { const m = getImg(i.src); if (m.complete) res(); else { m.onload = res; m.onerror = res; } })));
     try { await document.fonts.load('700 40px "Cormorant Garamond"'); await document.fonts.load('600 40px Inter'); } catch (e) {}
@@ -949,6 +1030,22 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(drawDz);
   b.onclick = () => { const show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.textContent = show ? 'Hide' : 'Show'; };
   w.appendChild(b);
 });
+
+/* ---------- slide buttons in the admin panel ---------- */
+const upSlide = mkSlide('Slide to upload frame', upFn); upSlide.setOff(true); $('aUpSlot').appendChild(upSlide);
+$('nGoSlot').appendChild(mkSlide('Slide to save new login', nGoFn));
+$('dzSlot').appendChild(mkSlide('Slide to save frame', dzSaveFn));
+lkSw = mkSlide('Slide to lock the site', async () => {
+  say('aMsg4', 'Please wait...');
+  try {
+    const want = !LOCKED;
+    const d = await apiPost({ action: 'lock', on: want, user: adminCred.user, pass: adminCred.pass });
+    if (d.ok) { setLocked(want); say('aMsg4', want ? 'Site locked.' : 'Site unlocked.'); }
+    else say('aMsg4', d.error || 'Something went wrong.');
+  } catch (e) { say('aMsg4', 'Could not reach the server. Please try again.'); }
+});
+$('lkSlot').appendChild(lkSw); updateLockUI(); applyLock();
+checkLock();
 refreshFrames();
 </script>
 </body>
