@@ -149,8 +149,12 @@
   .lockscr h1{font-family:var(--serif);font-size:clamp(34px,7vw,52px)}
   .lockscr p{color:var(--muted);margin-top:8px}
   .uform{max-width:320px;margin:26px auto 0;text-align:left}
-  .lockico{font-size:54px;margin-bottom:10px}
-  body.locked .brand, body.locked #nHome, body.locked #nEdit, body.locked footer, body.locked #viewHome, body.locked #viewEditor{display:none!important}
+  .e404{font-family:var(--serif);font-size:clamp(90px,26vw,170px);font-weight:700;line-height:1;color:var(--gold);letter-spacing:.04em}
+  .e404,.lockscr h1{user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  body.locked header{display:none!important}
+  #nUser{display:none}
+  body.locked #nUser{display:inline-block}
+  body.locked .brand, body.locked #nHome, body.locked #nEdit, body.locked footer, body.locked #viewHome, body.locked #viewEditor, body.locked #viewAdmin{display:none!important}
   body.locked .nav{justify-content:flex-start}
   footer{border-top:1px solid var(--line);padding:34px 0;text-align:center;color:var(--muted);font-size:13px}
   footer img{width:56px;height:56px;border-radius:50%;background:#fff;padding:6px;object-fit:contain;margin-bottom:10px}
@@ -170,17 +174,18 @@
       <a href="#home" id="nHome" class="hide-m">Home</a>
       <a href="#editor" id="nEdit">Frame Your Photo</a>
       <a href="#admin" id="nAdmin">Admin</a>
+      <a href="#user" id="nUser">User</a>
     </nav>
   </div>
 </header>
 
 <div id="lockScr" class="lockscr" hidden>
   <div class="wrap">
-    <div class="lockico">&#128274;</div>
-    <h1>Site Locked</h1>
-    <p>This page is closed for now. If you have an entry password, enter it below.</p>
-    <div class="uform">
-      <label class="lab" for="uPw">User entry password</label>
+    <div class="e404" id="e404">404</div>
+    <h1 id="e404t">Page not found</h1>
+    <p>The page you are looking for does not exist or has been moved.</p>
+    <div class="uform" id="uForm" hidden>
+      <label class="lab" for="uPw">Enter code</label>
       <input class="inp" id="uPw" type="password" autocomplete="off">
       <div class="row"><button class="btn" id="uGo" type="button" style="width:100%">Enter</button></div>
       <p class="msg" id="uMsg"></p>
@@ -435,6 +440,7 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 const c = $('c'), ctx = c.getContext('2d');
+var ORIG_TITLE = document.title, SHOWCODE = false;
 var LOCKED = false, LOCKV = '0', USERV = ''; try { LOCKED = localStorage.getItem('alfana_locked') === '1'; LOCKV = localStorage.getItem('alfana_lv') || '0'; USERV = localStorage.getItem('alfana_uv') || ''; } catch (e) {}
 let W = c.width, H = c.height; let WX = 0, WY = 0, WW = W, WH = CONFIG.windowHeight, WSH = 'rect', WR = 0;
 let photo = null, frameImg = null, frameOk = false;
@@ -688,9 +694,12 @@ const apiPost = async body => (await fetch(CONFIG.api, { method: 'POST', headers
 const say = (id, t) => { $(id).textContent = t; };
 
 function applyLock() {
-  const on = LOCKED && !adminCred && USERV !== LOCKV;
+  const inAdmin = !!adminCred && location.hash === '#admin';
+  const on = LOCKED && USERV !== LOCKV && !inAdmin;
   document.body.classList.toggle('locked', on);
-  $('lockScr').hidden = !(on && location.hash !== '#admin');
+  $('lockScr').hidden = !on;
+  $('uForm').hidden = !SHOWCODE;
+  document.title = on ? '404 - Page not found' : ORIG_TITLE;
 }
 function setLocked(v, ver) {
   LOCKED = !!v;
@@ -1061,18 +1070,22 @@ lkSw = mkSlide('Slide to lock the site', async () => {
 $('lkSlot').appendChild(lkSw); updateLockUI(); applyLock();
 
 /* ---------- user entry (when locked) ---------- */
-$('uGo').onclick = async () => {
-  if (!CONFIG.api) { say('uMsg', 'The server link is not set yet.'); return; }
+$('uGo').onclick = () => submitCode($('uPw').value);
+async function submitCode(code) {
+  if (!CONFIG.api || !code) return;
   say('uMsg', 'Checking...');
   try {
-    const d = await apiPost({ action: 'userlogin', pass: $('uPw').value });
-    if (d.ok) {
+    const d = await apiPost({ action: 'code', code });
+    if (d.ok && d.role === 'admin') {
+      adminCred = { user: d.user, pass: code }; $('uPw').value = ''; say('uMsg', '');
+      SHOWCODE = false; location.hash = '#admin'; showDash(); applyLock();
+    } else if (d.ok) {
       USERV = LOCKV = String(d.v);
       try { localStorage.setItem('alfana_uv', USERV); localStorage.setItem('alfana_lv', LOCKV); } catch (e) {}
-      $('uPw').value = ''; say('uMsg', ''); applyLock();
-    } else say('uMsg', 'Wrong password.');
+      $('uPw').value = ''; say('uMsg', ''); SHOWCODE = false; location.hash = '#home'; applyLock();
+    } else say('uMsg', 'Wrong code.');
   } catch (e) { say('uMsg', 'Could not reach the server. Please try again.'); }
-};
+}
 $('uPw').addEventListener('keydown', e => { if (e.key === 'Enter') $('uGo').click(); });
 $('uSlot').appendChild(mkSlide('Slide to save user password', async () => {
   const pw = $('uP').value;
@@ -1083,6 +1096,17 @@ $('uSlot').appendChild(mkSlide('Slide to save user password', async () => {
     if (d.ok) { $('uP').value = ''; say('aMsg4', 'User entry password changed.'); } else say('aMsg4', d.error || 'Something went wrong.');
   } catch (e) { say('aMsg4', 'Could not reach the server. Please try again.'); }
 }));
+
+/* secret entry */
+function secretTap(el, n, fn) {
+  let c = 0, t = null;
+  el.addEventListener('click', () => { c++; clearTimeout(t); t = setTimeout(() => { c = 0; }, 1500); if (c >= n) { c = 0; fn(); } });
+}
+/* the only way in: open the link with ?code=YOUR_CODE */
+(function () {
+  const q = new URLSearchParams(location.search).get('code');
+  if (q) { try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {} submitCode(q); }
+})();
 checkLock();
 refreshFrames();
 </script>
